@@ -7,7 +7,6 @@ import {
   OnModuleInit,
   UnauthorizedException,
   UseGuards,
-  ValidationPipe,
   createParamDecorator,
 } from '@nestjs/common';
 import {
@@ -36,11 +35,11 @@ import {
   OutputType,
   Property,
   Skip,
+  BaseService,
+  InjectBaseService,
 } from 'dryerjs';
 import { PaginateModel } from 'mongoose';
-import { BaseService, InjectBaseService } from 'dryerjs/dist/base.service';
 import { JwtModule, JwtService } from '@nestjs/jwt';
-import { plainToInstance } from 'class-transformer';
 import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin/landingPage/default';
 
 enum UserRole {
@@ -50,7 +49,69 @@ enum UserRole {
 
 registerEnumType(UserRole, { name: 'UserRole' });
 
-@Definition({ allowedApis: ['findOne', 'paginate', 'remove', 'update'] })
+const getCtxFromReq = async (
+  req: Request,
+  jwtService: JwtService,
+): Promise<Context> => {
+  const token = req.header('Authorization')?.split(' ')[1];
+  if (!token) return null;
+  try {
+    return await jwtService.verify(token);
+  } catch (error) {
+    return null;
+  }
+};
+
+@Injectable()
+export class AdminOnly implements CanActivate {
+  constructor(private readonly jwtService: JwtService) {}
+
+  async canActivate(executionContext: ExecutionContext): Promise<boolean> {
+    const { req } = GqlExecutionContext.create(executionContext).getContext();
+    const ctx = await getCtxFromReq(req, this.jwtService);
+    console.log(ctx);
+    if (ctx?.role !== UserRole.ADMIN) {
+      throw new UnauthorizedException('AdminOnly');
+    }
+    req.ctx = ctx;
+    return true;
+  }
+}
+
+@Injectable()
+export class UserOnly implements CanActivate {
+  constructor(private readonly jwtService: JwtService) {}
+
+  async canActivate(executionContext: ExecutionContext): Promise<boolean> {
+    const { req } = GqlExecutionContext.create(executionContext).getContext();
+    const ctx = await getCtxFromReq(req, this.jwtService);
+    if (![UserRole.ADMIN, UserRole.USER].includes(ctx?.role)) {
+      throw new UnauthorizedException('AdminOnly');
+    }
+    req.ctx = ctx;
+    return true;
+  }
+}
+
+@Injectable()
+export class PublicAccessWithContext implements CanActivate {
+  constructor(private readonly jwtService: JwtService) {}
+
+  async canActivate(executionContext: ExecutionContext): Promise<boolean> {
+    const { req } = GqlExecutionContext.create(executionContext).getContext();
+    const ctx = await getCtxFromReq(req, this.jwtService);
+    req.ctx = ctx;
+    return true;
+  }
+}
+
+@Definition({
+  allowedApis: ['findOne', 'paginate', 'remove', 'update'],
+  resolverDecorators: {
+    default: [UseGuards(UserOnly)],
+    paginate: [UseGuards(AdminOnly)],
+  },
+})
 export class User {
   @Id()
   id: ObjectId;
@@ -89,16 +150,11 @@ export class Post {
 type Context = null | Pick<User, 'email' | 'id' | 'name' | 'role'>;
 
 const SYSTEM: Context = {
-  id: new ObjectId('000000000000000000000000'),
+  id: new ObjectId('999999999999999999999999'),
   role: UserRole.ADMIN,
   email: 'system@dryerjs.com',
   name: 'system',
 };
-
-const pipe = new ValidationPipe({
-  transform: true,
-  expectedType: CreateInputType(User),
-});
 
 export const Ctx = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext) => {
@@ -108,65 +164,10 @@ export const Ctx = createParamDecorator(
   },
 );
 
-const getCtxFromReq = async (
-  req: Request,
-  jwtService: JwtService,
-): Promise<Context> => {
-  const token = req.header('Authorization')?.split(' ')[1];
-  if (!token) return null;
-  try {
-    return jwtService.verify(token);
-  } catch (error) {
-    return null;
-  }
-};
-
-@Injectable()
-export class AdminOnly implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
-
-  async canActivate(executionContext: ExecutionContext): Promise<boolean> {
-    const { req } = GqlExecutionContext.create(executionContext).getContext();
-    const ctx = await getCtxFromReq(req, this.jwtService);
-    if (ctx?.role !== UserRole.ADMIN) {
-      throw new UnauthorizedException('AdminOnly');
-    }
-    req.ctx = ctx;
-    return true;
-  }
-}
-
-@Injectable()
-export class UserOnly implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
-
-  async canActivate(executionContext: ExecutionContext): Promise<boolean> {
-    const { req } = GqlExecutionContext.create(executionContext).getContext();
-    const ctx = await getCtxFromReq(req, this.jwtService);
-    if (![UserRole.ADMIN, UserRole.USER].includes(ctx?.role)) {
-      throw new UnauthorizedException('AdminOnly');
-    }
-    req.ctx = ctx;
-    return true;
-  }
-}
-
-@Injectable()
-export class PublicAccessWithContext implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
-
-  async canActivate(executionContext: ExecutionContext): Promise<boolean> {
-    const { req } = GqlExecutionContext.create(executionContext).getContext();
-    const ctx = await getCtxFromReq(req, this.jwtService);
-    req.ctx = ctx;
-    return true;
-  }
-}
-
 @ObjectType()
 class AccessTokenResponse {
   @Field()
-  token: string;
+  accessToken: string;
 }
 
 @InputType()
@@ -185,15 +186,6 @@ export class AuthResolver {
     private readonly jwtService: JwtService,
   ) {}
 
-  @Mutation(() => OutputType(User))
-  async signUp(
-    @Args('input', { type: () => CreateInputType(User) }, pipe)
-    input: Omit<User, 'id'>,
-  ) {
-    const user = await this.userService.create(SYSTEM, input);
-    return plainToInstance(User, user['toObject']());
-  }
-
   @Mutation(() => AccessTokenResponse)
   async signIn(
     @Args('input', {
@@ -204,7 +196,7 @@ export class AuthResolver {
     const user = await this.userService.findOne(SYSTEM, {
       email: input.email,
     });
-    if (user.password === input.password) {
+    if (user.password !== input.password) {
       throw new UnauthorizedException('Invalid email or password');
     }
     const accessToken = await this.jwtService.signAsync({
@@ -297,10 +289,17 @@ export class SeederService implements OnModuleInit {
     MongooseModule.forRoot('mongodb://127.0.0.1:27017/dryerjs-jwt'),
     DryerModule.register({ definitions: [User, Post], contextDecorator: Ctx }),
     JwtModule.register({
+      global: true,
       secret: 'DO_NOT_TELL_ANYONE',
       signOptions: { expiresIn: '7d' },
     }),
   ],
-  providers: [AuthResolver, SeederService],
+  providers: [
+    AuthResolver,
+    SeederService,
+    UserOnly,
+    AdminOnly,
+    PublicAccessWithContext,
+  ],
 })
 export class AppModule {}
