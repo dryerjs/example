@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   Injectable,
   Module,
+  OnModuleInit,
   UnauthorizedException,
   UseGuards,
   ValidationPipe,
@@ -23,7 +24,7 @@ import {
   InputType,
 } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
-import { MongooseModule } from '@nestjs/mongoose';
+import { InjectModel, MongooseModule } from '@nestjs/mongoose';
 import {
   BelongsTo,
   CreateInputType,
@@ -36,6 +37,7 @@ import {
   Property,
   Skip,
 } from 'dryerjs';
+import { PaginateModel } from 'mongoose';
 import { BaseService, InjectBaseService } from 'dryerjs/dist/base.service';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { plainToInstance } from 'class-transformer';
@@ -225,6 +227,65 @@ export class AuthResolver {
   }
 }
 
+@Injectable()
+export class SeederService implements OnModuleInit {
+  constructor(
+    @InjectModel('User') readonly User: PaginateModel<User>,
+    @InjectModel('Post') readonly Post: PaginateModel<User>,
+  ) {}
+
+  async onModuleInit() {
+    if ((await this.User.countDocuments({})) !== 0) return;
+    console.log('Seeding...');
+    const adminUserId = new ObjectId('000000000000000000000000');
+    const normalUserId = new ObjectId('000000000000000000000001');
+    const users = [
+      {
+        _id: adminUserId,
+        email: 'admin@dryerjs.com',
+        password: 'password',
+        name: 'Admin@DryerJS',
+        role: UserRole.ADMIN,
+      },
+      {
+        _id: new ObjectId('000000000000000000000001'),
+        email: 'user@dryerjs.com',
+        password: 'password',
+        name: 'User@DryerJS',
+        role: UserRole.USER,
+      },
+    ];
+    const posts = [
+      {
+        _id: new ObjectId('000000000000000000000002'),
+        content: 'Admin public announcement',
+        isPublic: true,
+        userId: adminUserId,
+      },
+      {
+        _id: new ObjectId('000000000000000000000003'),
+        content: 'Admin private note',
+        isPublic: false,
+        userId: adminUserId,
+      },
+      {
+        _id: new ObjectId('000000000000000000000004'),
+        content: 'User public note',
+        isPublic: true,
+        userId: normalUserId,
+      },
+      {
+        _id: new ObjectId('000000000000000000000005'),
+        content: 'User private note',
+        isPublic: false,
+        userId: normalUserId,
+      },
+    ];
+    for (const user of users) await this.User.create(user);
+    for (const post of posts) await this.Post.create(post);
+  }
+}
+
 @Module({
   imports: [
     GraphQLModule.forRoot<ApolloDriverConfig>({
@@ -233,13 +294,13 @@ export class AuthResolver {
       playground: false,
       plugins: [ApolloServerPluginLandingPageLocalDefault()],
     }),
-    MongooseModule.forRoot('mongodb://127.0.0.1:27017/test'),
+    MongooseModule.forRoot('mongodb://127.0.0.1:27017/dryerjs-jwt'),
     DryerModule.register({ definitions: [User, Post], contextDecorator: Ctx }),
     JwtModule.register({
       secret: 'DO_NOT_TELL_ANYONE',
       signOptions: { expiresIn: '7d' },
     }),
   ],
-  providers: [AuthResolver],
+  providers: [AuthResolver, SeederService],
 })
 export class AppModule {}
