@@ -37,6 +37,8 @@ import {
   Skip,
   BaseService,
   InjectBaseService,
+  Hook,
+  BeforeFindManyHookInput,
 } from 'dryerjs';
 import { PaginateModel } from 'mongoose';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -69,7 +71,6 @@ export class AdminOnly implements CanActivate {
   async canActivate(executionContext: ExecutionContext): Promise<boolean> {
     const { req } = GqlExecutionContext.create(executionContext).getContext();
     const ctx = await getCtxFromReq(req, this.jwtService);
-    console.log(ctx);
     if (ctx?.role !== UserRole.ADMIN) {
       throw new UnauthorizedException('AdminOnly');
     }
@@ -109,7 +110,8 @@ export class PublicAccessWithContext implements CanActivate {
   allowedApis: ['findOne', 'paginate', 'remove', 'update'],
   resolverDecorators: {
     default: [UseGuards(UserOnly)],
-    paginate: [UseGuards(AdminOnly)],
+    list: [UseGuards(AdminOnly)],
+    update: [UseGuards(UserOnly)],
   },
 })
 export class User {
@@ -156,10 +158,23 @@ const SYSTEM: Context = {
   name: 'system',
 };
 
+@Hook(() => User)
+class UserHook implements Hook<User, Context> {
+  async beforeFindOne({
+    ctx,
+    filter,
+  }: BeforeFindManyHookInput<User, Context>): Promise<void> {
+    console.log(ctx);
+    if (ctx?.role === UserRole.ADMIN) return;
+    if (!ctx) throw new UnauthorizedException();
+    filter._id = ctx?.id;
+  }
+}
+
 export const Ctx = createParamDecorator(
-  (_data: unknown, ctx: ExecutionContext) => {
-    const { req } = GqlExecutionContext.create(ctx).getContext();
-    if (req.user) return req.user as Context;
+  (_data: unknown, executionContext: ExecutionContext) => {
+    const { req } = GqlExecutionContext.create(executionContext).getContext();
+    if (req.ctx) return req.ctx as Context;
     return null;
   },
 );
@@ -287,7 +302,11 @@ export class SeederService implements OnModuleInit {
       plugins: [ApolloServerPluginLandingPageLocalDefault()],
     }),
     MongooseModule.forRoot('mongodb://127.0.0.1:27017/dryerjs-jwt'),
-    DryerModule.register({ definitions: [User, Post], contextDecorator: Ctx }),
+    DryerModule.register({
+      definitions: [User, Post],
+      contextDecorator: Ctx,
+      hooks: [UserHook],
+    }),
     JwtModule.register({
       global: true,
       secret: 'DO_NOT_TELL_ANYONE',
