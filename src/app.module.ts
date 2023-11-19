@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   Injectable,
   Module,
+  NotFoundException,
   OnModuleInit,
   UnauthorizedException,
   UseGuards,
@@ -39,6 +40,8 @@ import {
   InjectBaseService,
   Hook,
   BeforeUpdateHookInput,
+  BeforeFindOneHookInput,
+  AfterFindOneHookInput,
 } from 'dryerjs';
 import { PaginateModel } from 'mongoose';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -130,7 +133,13 @@ export class User {
   password: string;
 }
 
-@Definition()
+@Definition({
+  allowedApis: ['essentials'],
+  resolverDecorators: {
+    write: [UseGuards(UserOnly)],
+    read: [UseGuards(PublicAccessWithContext)],
+  },
+})
 export class Post {
   @Id()
   id: string;
@@ -166,6 +175,46 @@ class UserHook implements Hook<User, Context> {
     if (ctx.role === UserRole.USER && input.role === UserRole.ADMIN) {
       throw new UnauthorizedException('YOU_WERE_CAUGHT');
     }
+  }
+}
+
+@Hook(() => Post)
+class PostHook implements Hook<Post, Context> {
+  async beforeUpdate({
+    ctx,
+    beforeUpdated,
+  }: BeforeUpdateHookInput<Post, Context>): Promise<void> {
+    if (
+      ctx?.role === UserRole.USER &&
+      beforeUpdated.id.toString() !== ctx.id.toString()
+    ) {
+      throw new UnauthorizedException('YOU_WERE_CAUGHT');
+    }
+  }
+
+  async beforeFindOne({
+    ctx,
+    filter,
+  }: BeforeFindOneHookInput<Post, Context>): Promise<void> {
+    if (ctx === null) filter.isPublic = true;
+  }
+
+  async afterFindOne({
+    ctx,
+    result,
+  }: AfterFindOneHookInput<Post, Context>): Promise<void> {
+    if (result.isPublic) return;
+    if (ctx?.role === UserRole.ADMIN) return;
+    if (result.userId.toString() !== ctx.id.toString()) {
+      throw new NotFoundException();
+    }
+  }
+
+  async beforeFindMany({
+    ctx,
+    filter,
+  }: BeforeFindOneHookInput<Post, Context>): Promise<void> {
+    if (ctx === null) filter.isPublic = true;
   }
 }
 
@@ -303,7 +352,7 @@ export class SeederService implements OnModuleInit {
     DryerModule.register({
       definitions: [User, Post],
       contextDecorator: Ctx,
-      hooks: [UserHook],
+      hooks: [UserHook, PostHook],
     }),
     JwtModule.register({
       global: true,
