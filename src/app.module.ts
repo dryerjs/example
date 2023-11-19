@@ -38,7 +38,7 @@ import {
   BaseService,
   InjectBaseService,
   Hook,
-  BeforeFindManyHookInput,
+  BeforeUpdateHookInput,
 } from 'dryerjs';
 import { PaginateModel } from 'mongoose';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -109,9 +109,8 @@ export class PublicAccessWithContext implements CanActivate {
 @Definition({
   allowedApis: ['findOne', 'paginate', 'remove', 'update'],
   resolverDecorators: {
-    default: [UseGuards(UserOnly)],
-    list: [UseGuards(AdminOnly)],
     update: [UseGuards(UserOnly)],
+    remove: [UseGuards(AdminOnly)],
   },
 })
 export class User {
@@ -127,7 +126,7 @@ export class User {
   @Property()
   name: string;
 
-  @Property({ update: Skip, output: Skip })
+  @Property({ output: Skip })
   password: string;
 }
 
@@ -160,14 +159,13 @@ const SYSTEM: Context = {
 
 @Hook(() => User)
 class UserHook implements Hook<User, Context> {
-  async beforeFindOne({
+  async beforeUpdate({
     ctx,
-    filter,
-  }: BeforeFindManyHookInput<User, Context>): Promise<void> {
-    console.log(ctx);
-    if (ctx?.role === UserRole.ADMIN) return;
-    if (!ctx) throw new UnauthorizedException();
-    filter._id = ctx?.id;
+    input,
+  }: BeforeUpdateHookInput<User, Context>): Promise<void> {
+    if (ctx.role === UserRole.USER && input.role === UserRole.ADMIN) {
+      throw new UnauthorizedException('YOU_WERE_CAUGHT');
+    }
   }
 }
 
