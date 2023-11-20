@@ -43,6 +43,8 @@ import {
   BeforeUpdateHookInput,
   BeforeFindOneHookInput,
   AfterFindOneHookInput,
+  BeforeRemoveHookInput,
+  BeforeFindManyHookInput,
 } from 'dryerjs';
 import { PaginateModel } from 'mongoose';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -68,8 +70,12 @@ export class RoleGuard implements CanActivate {
     const { req } = GqlExecutionContext.create(executionContext).getContext();
 
     const ctx = await this.jwtService
-      .verify(req.header('Authorization')?.split(' ')?.[1])
+      .verifyAsync(req.header('Authorization')?.split(' ')?.[1])
       .catch(() => null);
+
+    if (ctx?.id) {
+      ctx.id = new ObjectId(ctx.id);
+    }
 
     req.ctx = ctx;
 
@@ -89,15 +95,21 @@ export class RoleGuard implements CanActivate {
   }
 }
 
-const UserOnly = applyDecorators(Role(UserRole.USER), UseGuards(RoleGuard));
-const AdminOnly = applyDecorators(Role(UserRole.ADMIN), UseGuards(RoleGuard));
-const PublicAccessWithRole = applyDecorators(UseGuards(RoleGuard));
+const UserOnly = () => {
+  return applyDecorators(Role(UserRole.USER), UseGuards(RoleGuard));
+};
+
+const AdminOnly = () => {
+  return applyDecorators(Role(UserRole.ADMIN), UseGuards(RoleGuard));
+};
+
+const PublicAccessWithRole = () => applyDecorators(UseGuards(RoleGuard));
 
 @Definition({
   allowedApis: ['findOne', 'paginate', 'remove', 'update'],
   resolverDecorators: {
-    update: [UserOnly],
-    remove: [AdminOnly],
+    update: [UserOnly()],
+    remove: [AdminOnly()],
   },
 })
 export class User {
@@ -120,8 +132,8 @@ export class User {
 @Definition({
   allowedApis: 'essentials',
   resolverDecorators: {
-    write: [UserOnly],
-    read: [PublicAccessWithRole],
+    write: [UserOnly()],
+    read: [PublicAccessWithRole()],
   },
 })
 export class Post {
@@ -176,6 +188,18 @@ class PostHook implements Hook<Post, Context> {
     }
   }
 
+  async beforeRemove({
+    ctx,
+    beforeRemoved,
+  }: BeforeRemoveHookInput<Post, Context>): Promise<void> {
+    if (
+      ctx?.role === UserRole.USER &&
+      beforeRemoved.id.toString() !== ctx.id.toString()
+    ) {
+      throw new UnauthorizedException('YOU_WERE_CAUGHT');
+    }
+  }
+
   async beforeFindOne({
     ctx,
     filter,
@@ -197,8 +221,18 @@ class PostHook implements Hook<Post, Context> {
   async beforeFindMany({
     ctx,
     filter,
-  }: BeforeFindOneHookInput<Post, Context>): Promise<void> {
+  }: BeforeFindManyHookInput<Post, Context>): Promise<void> {
     if (ctx === null) filter.isPublic = true;
+    if (ctx?.role === UserRole.USER) {
+      filter['$and'] = [
+        {
+          $or: [
+            { userId: ctx.id },
+            { userId: { $ne: ctx.id }, isPublic: true },
+          ],
+        },
+      ];
+    }
   }
 }
 
@@ -254,7 +288,7 @@ export class AuthResolver {
     return { accessToken };
   }
 
-  @UseGuards(UserOnly)
+  @UserOnly()
   @Query(() => OutputType(User))
   async whoAmI(@Ctx() ctx: Context) {
     const user = await this.userService.findOne(ctx, { _id: ctx.id });
