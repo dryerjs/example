@@ -1,4 +1,3 @@
-import { Request } from 'express';
 import {
   CanActivate,
   ExecutionContext,
@@ -8,8 +7,10 @@ import {
   OnModuleInit,
   UnauthorizedException,
   UseGuards,
+  applyDecorators,
   createParamDecorator,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import {
   Args,
   Field,
@@ -54,66 +55,49 @@ enum UserRole {
 
 registerEnumType(UserRole, { name: 'UserRole' });
 
-const getCtxFromReq = async (
-  req: Request,
-  jwtService: JwtService,
-): Promise<Context> => {
-  const token = req.header('Authorization')?.split(' ')[1];
-  if (!token) return null;
-  try {
-    return await jwtService.verify(token);
-  } catch (error) {
-    return null;
-  }
-};
+export const Role = Reflector.createDecorator<UserRole>();
 
 @Injectable()
-export class AdminOnly implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
+export class RoleGuard implements CanActivate {
+  constructor(
+    private readonly jwtService: JwtService,
+    private reflector: Reflector,
+  ) {}
 
   async canActivate(executionContext: ExecutionContext): Promise<boolean> {
     const { req } = GqlExecutionContext.create(executionContext).getContext();
-    const ctx = await getCtxFromReq(req, this.jwtService);
-    if (ctx?.role !== UserRole.ADMIN) {
+
+    const ctx = await this.jwtService
+      .verify(req.header('Authorization')?.split(' ')?.[1])
+      .catch(() => null);
+
+    req.ctx = ctx;
+
+    const role = this.reflector.get(Role, executionContext.getHandler());
+    if (!role) return true;
+    if (role === UserRole.ADMIN && ctx?.role !== UserRole.ADMIN) {
       throw new UnauthorizedException('AdminOnly');
     }
-    req.ctx = ctx;
-    return true;
-  }
-}
-
-@Injectable()
-export class UserOnly implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
-
-  async canActivate(executionContext: ExecutionContext): Promise<boolean> {
-    const { req } = GqlExecutionContext.create(executionContext).getContext();
-    const ctx = await getCtxFromReq(req, this.jwtService);
-    if (![UserRole.ADMIN, UserRole.USER].includes(ctx?.role)) {
-      throw new UnauthorizedException('AdminOnly');
+    if (
+      role === UserRole.USER &&
+      ![UserRole.ADMIN, UserRole.USER].includes(ctx?.role)
+    ) {
+      throw new UnauthorizedException('UserOnly');
     }
-    req.ctx = ctx;
+
     return true;
   }
 }
 
-@Injectable()
-export class PublicAccessWithContext implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
-
-  async canActivate(executionContext: ExecutionContext): Promise<boolean> {
-    const { req } = GqlExecutionContext.create(executionContext).getContext();
-    const ctx = await getCtxFromReq(req, this.jwtService);
-    req.ctx = ctx;
-    return true;
-  }
-}
+const UserOnly = applyDecorators(Role(UserRole.USER), UseGuards(RoleGuard));
+const AdminOnly = applyDecorators(Role(UserRole.ADMIN), UseGuards(RoleGuard));
+const PublicAccessWithRole = applyDecorators(UseGuards(RoleGuard));
 
 @Definition({
   allowedApis: ['findOne', 'paginate', 'remove', 'update'],
   resolverDecorators: {
-    update: [UseGuards(UserOnly)],
-    remove: [UseGuards(AdminOnly)],
+    update: [UserOnly],
+    remove: [AdminOnly],
   },
 })
 export class User {
@@ -134,10 +118,10 @@ export class User {
 }
 
 @Definition({
-  allowedApis: ['essentials'],
+  allowedApis: 'essentials',
   resolverDecorators: {
-    write: [UseGuards(UserOnly)],
-    read: [UseGuards(PublicAccessWithContext)],
+    write: [UserOnly],
+    read: [PublicAccessWithRole],
   },
 })
 export class Post {
@@ -360,12 +344,6 @@ export class SeederService implements OnModuleInit {
       signOptions: { expiresIn: '7d' },
     }),
   ],
-  providers: [
-    AuthResolver,
-    SeederService,
-    UserOnly,
-    AdminOnly,
-    PublicAccessWithContext,
-  ],
+  providers: [AuthResolver, SeederService, RoleGuard],
 })
 export class AppModule {}
