@@ -277,6 +277,7 @@ export class SeederService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    if (process.env.NODE_ENV === 'test') return;
     if ((await this.User.countDocuments({})) !== 0) return;
     console.log('Seeding...');
     const adminUserId = new ObjectId('000000000000000000000000');
@@ -336,7 +337,9 @@ export class SeederService implements OnModuleInit {
       playground: false,
       plugins: [ApolloServerPluginLandingPageLocalDefault()],
     }),
-    MongooseModule.forRoot('mongodb://127.0.0.1:27017/dryerjs-jwt'),
+    MongooseModule.forRoot(
+      process.env.MONGO_URL || 'mongodb://127.0.0.1:27017/dryerjs-example',
+    ),
     DryerModule.register({
       definitions: [User, Post],
       contextDecorator: Ctx,
