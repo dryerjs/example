@@ -517,4 +517,44 @@ describe('App works', () => {
       },
     });
   });
+
+  it('User cannot update other user', async () => {
+    await testHelper.makeFailRequest({
+      query: `
+        mutation {
+          updateUser(input: {
+            id: "000000000000000000000002"
+            name: "Updated name"
+          }) {
+            id
+            name
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_1_EMAIL),
+      },
+      errorMessageMustContains: 'Cannot update other user',
+    });
+  });
+
+  it('User cannot update other user role', async () => {
+    await testHelper.makeFailRequest({
+      query: `
+        mutation {
+          updateUser(input: {
+            id: "000000000000000000000001"
+            role: "ADMIN"
+          }) {
+            id
+            name
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_1_EMAIL),
+      },
+      errorMessageMustContains: 'Cannot update role',
+    });
+  });
 });

@@ -166,13 +166,13 @@ class UserHook implements Hook<User, Context> {
     input,
   }: BeforeUpdateHookInput<User, Context>): Promise<void> {
     if (ctx.role === UserRole.USER && input.role === UserRole.ADMIN) {
-      throw new UnauthorizedException('YOU_WERE_CAUGHT');
+      throw new UnauthorizedException('Cannot update role');
     }
     if (
       ctx.role === UserRole.USER &&
       input.id.toString() !== ctx.id.toString()
     ) {
-      throw new UnauthorizedException('YOU_WERE_CAUGHT');
+      throw new UnauthorizedException('Cannot update other user');
     }
   }
 }
