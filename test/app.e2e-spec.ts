@@ -5,8 +5,6 @@ import * as mongoose from 'mongoose';
 import { AppModule } from './../src/app.module';
 import { getModelToken } from '@nestjs/mongoose';
 
-jest.setTimeout(10000);
-
 export const isNil = (value: any): value is null | undefined =>
   value === null || value === undefined;
 
@@ -556,5 +554,57 @@ describe('App works', () => {
       },
       errorMessageMustContains: 'Cannot update role',
     });
+  });
+
+  it('User cannot remove user', async () => {
+    await testHelper.makeFailRequest({
+      query: `
+        mutation {
+          removeUser(id: "000000000000000000000002") {
+            success
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_1_EMAIL),
+      },
+      errorMessageMustContains: 'AdminOnly',
+    });
+  });
+
+  it('Admin can remove user', async () => {
+    await testHelper.makeSuccessRequest({
+      query: `
+        mutation {
+          removeUser(id: "000000000000000000000002") {
+            success
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(ADMIN_EMAIL),
+      },
+    });
+  });
+
+  it('Admin can update user role', async () => {
+    const result = await testHelper.makeSuccessRequest({
+      query: `
+        mutation {
+          updateUser(input: {
+            id: "000000000000000000000001"
+            role: "ADMIN"
+          }) {
+            id
+            role
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(ADMIN_EMAIL),
+      },
+    });
+
+    expect(result.updateUser.role).toEqual('ADMIN');
   });
 });
