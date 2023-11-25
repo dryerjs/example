@@ -3,7 +3,6 @@ import {
   ExecutionContext,
   Injectable,
   Module,
-  NotFoundException,
   OnModuleInit,
   UnauthorizedException,
   UseGuards,
@@ -41,10 +40,8 @@ import {
   InjectBaseService,
   Hook,
   BeforeUpdateHookInput,
-  BeforeFindOneHookInput,
-  AfterFindOneHookInput,
-  BeforeRemoveHookInput,
-  BeforeFindManyHookInput,
+  BeforeWriteFilterHookInput,
+  BeforeReadFilterHookInput,
 } from 'dryerjs';
 import { PaginateModel } from 'mongoose';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -130,7 +127,6 @@ export class User {
 }
 
 @Definition({
-  allowedApis: 'essentials',
   resolverDecorators: {
     write: [UserOnly()],
     read: [PublicAccessWithRole()],
@@ -171,57 +167,31 @@ class UserHook implements Hook<User, Context> {
     if (ctx.role === UserRole.USER && input.role === UserRole.ADMIN) {
       throw new UnauthorizedException('YOU_WERE_CAUGHT');
     }
+    if (
+      ctx.role === UserRole.USER &&
+      input.id.toString() !== ctx.id.toString()
+    ) {
+      throw new UnauthorizedException('YOU_WERE_CAUGHT');
+    }
   }
 }
 
 @Hook(() => Post)
 class PostHook implements Hook<Post, Context> {
-  async beforeUpdate({
-    ctx,
-    beforeUpdated,
-  }: BeforeUpdateHookInput<Post, Context>): Promise<void> {
-    if (
-      ctx?.role === UserRole.USER &&
-      beforeUpdated.id.toString() !== ctx.id.toString()
-    ) {
-      throw new UnauthorizedException('YOU_WERE_CAUGHT');
-    }
-  }
-
-  async beforeRemove({
-    ctx,
-    beforeRemoved,
-  }: BeforeRemoveHookInput<Post, Context>): Promise<void> {
-    if (
-      ctx?.role === UserRole.USER &&
-      beforeRemoved.id.toString() !== ctx.id.toString()
-    ) {
-      throw new UnauthorizedException('YOU_WERE_CAUGHT');
-    }
-  }
-
-  async beforeFindOne({
+  async beforeWriteFilter({
     ctx,
     filter,
-  }: BeforeFindOneHookInput<Post, Context>): Promise<void> {
-    if (ctx === null) filter.isPublic = true;
-  }
-
-  async afterFindOne({
-    ctx,
-    result,
-  }: AfterFindOneHookInput<Post, Context>): Promise<void> {
-    if (result.isPublic) return;
-    if (ctx?.role === UserRole.ADMIN) return;
-    if (result.userId.toString() !== ctx.id.toString()) {
-      throw new NotFoundException();
+  }: BeforeWriteFilterHookInput<Post, Context>): Promise<void> {
+    if (ctx?.role === UserRole.USER) {
+      filter.userId = ctx.id;
     }
+    // guest cannot write post so we don't need to handle it
   }
 
-  async beforeFindMany({
+  async beforeReadFilter({
     ctx,
     filter,
-  }: BeforeFindManyHookInput<Post, Context>): Promise<void> {
+  }: BeforeReadFilterHookInput<Post, Context>): Promise<void> {
     if (ctx === null) filter.isPublic = true;
     if (ctx?.role === UserRole.USER) {
       filter['$and'] = [
