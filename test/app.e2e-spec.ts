@@ -330,4 +330,191 @@ describe('App works', () => {
       errorMessageMustContains: 'No Post found with ID',
     });
   });
+
+  it('Guess can get public posts', async () => {
+    const result = await testHelper.makeSuccessRequest({
+      query: `
+        query PaginatedPost {
+          paginatePosts {
+            docs {
+              id
+              isPublic
+              content
+            }
+          }
+        }
+      `,
+    });
+
+    expect(
+      result.paginatePosts.docs.sort((a, b) => {
+        if (a.id === b.id) return 0;
+        if (a.id > b.id) return 1;
+        return -1;
+      }),
+    ).toEqual([
+      {
+        id: '000000000000000000000002',
+        isPublic: true,
+        content: 'Admin public announcement',
+      },
+      {
+        id: '000000000000000000000004',
+        isPublic: true,
+        content: 'User public note',
+      },
+      {
+        id: '000000000000000000000006',
+        isPublic: true,
+        content: 'Second user public note',
+      },
+    ]);
+  });
+
+  it('Guess can get public post', async () => {
+    const result = await testHelper.makeSuccessRequest({
+      query: `
+        query {
+          post(id: "000000000000000000000002") {
+            id
+            isPublic
+            content
+            userId
+          }
+        }
+      `,
+    });
+
+    expect(result.post.id).toEqual('000000000000000000000002');
+  });
+
+  it('Guess cannot get private post', async () => {
+    await testHelper.makeFailRequest({
+      query: `
+        query {
+          post(id: "000000000000000000000005") {
+            id
+            isPublic
+            content
+            userId
+          }
+        }
+      `,
+      errorMessageMustContains: 'No Post found with ID',
+    });
+  });
+
+  it('User can update his own post', async () => {
+    const result = await testHelper.makeSuccessRequest({
+      query: `
+        mutation {
+          updatePost(input: {
+            id: "000000000000000000000005"
+            content: "Updated content"
+          }) {
+            id
+            isPublic
+            content
+            userId
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_1_EMAIL),
+      },
+    });
+
+    expect(result.updatePost.content).toEqual('Updated content');
+  });
+
+  it('User cannot update other post', async () => {
+    await testHelper.makeFailRequest({
+      query: `
+        mutation {
+          updatePost(input: {
+            id: "000000000000000000000005"
+            content: "Updated content"
+          }) {
+            id
+            isPublic
+            content
+            userId
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_2_EMAIL),
+      },
+      errorMessageMustContains: 'No Post found with ID',
+    });
+  });
+
+  it('Admin can update other post', async () => {
+    const result = await testHelper.makeSuccessRequest({
+      query: `
+        mutation {
+          updatePost(input: {
+            id: "000000000000000000000005"
+            content: "Updated content"
+          }) {
+            id
+            isPublic
+            content
+            userId
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(ADMIN_EMAIL),
+      },
+    });
+
+    expect(result.updatePost.content).toEqual('Updated content');
+  });
+
+  it('User can remove his own post', async () => {
+    await testHelper.makeSuccessRequest({
+      query: `
+        mutation {
+          removePost(id: "000000000000000000000005") {
+            success
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_1_EMAIL),
+      },
+    });
+  });
+
+  it('User cannot remove other post', async () => {
+    await testHelper.makeFailRequest({
+      query: `
+        mutation {
+          removePost(id: "000000000000000000000005") {
+            success
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_2_EMAIL),
+      },
+      errorMessageMustContains: 'No Post found with ID',
+    });
+  });
+
+  it('Admin can remove other post', async () => {
+    await testHelper.makeSuccessRequest({
+      query: `
+        mutation {
+          removePost(id: "000000000000000000000005") {
+            success
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(ADMIN_EMAIL),
+      },
+    });
+  });
 });

@@ -135,7 +135,7 @@ export class User {
 })
 export class Post {
   @Id()
-  id: string;
+  id: ObjectId;
 
   @Property()
   content: string;
