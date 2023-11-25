@@ -231,4 +231,103 @@ describe('App works', () => {
       },
     ]);
   });
+
+  it('Admin can get one private post of other user', async () => {
+    const result = await testHelper.makeSuccessRequest({
+      query: `
+        query {
+          post(id: "000000000000000000000005") {
+            id
+            isPublic
+            content
+            userId
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(ADMIN_EMAIL),
+      },
+    });
+
+    expect(result.post.id).toEqual('000000000000000000000005');
+  });
+
+  it('User can get one private post his own', async () => {
+    const result = await testHelper.makeSuccessRequest({
+      query: `
+        query {
+          post(id: "000000000000000000000007") {
+            id
+            isPublic
+            content
+            userId
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_2_EMAIL),
+      },
+    });
+
+    expect(result.post.id).toEqual('000000000000000000000007');
+  });
+
+  it('User can get one public post his own', async () => {
+    const result = await testHelper.makeSuccessRequest({
+      query: `
+        query {
+          post(id: "000000000000000000000006") {
+            id
+            isPublic
+            content
+            userId
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_2_EMAIL),
+      },
+    });
+
+    expect(result.post.id).toEqual('000000000000000000000006');
+  });
+
+  it('User can get one public post of other', async () => {
+    const result = await testHelper.makeSuccessRequest({
+      query: `
+        query {
+          post(id: "000000000000000000000004") {
+            id
+            isPublic
+            content
+            userId
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_2_EMAIL),
+      },
+    });
+
+    expect(result.post.id).toEqual('000000000000000000000004');
+  });
+
+  it('User cannot get private post of other', async () => {
+    await testHelper.makeFailRequest({
+      query: `
+        query {
+          post(id: "000000000000000000000005") {
+            id
+            isPublic
+            content
+            userId
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_2_EMAIL),
+      },
+      errorMessageMustContains: 'No Post found with ID',
+    });
+  });
 });
