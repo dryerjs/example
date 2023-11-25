@@ -2,6 +2,7 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  Logger,
   Module,
   OnModuleInit,
   UnauthorizedException,
@@ -277,11 +278,13 @@ export class SeederService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    if (process.env.NODE_ENV === 'test') return;
     if ((await this.User.countDocuments({})) !== 0) return;
-    console.log('Seeding...');
+    if (process.env.NODE_ENV !== 'test') {
+      Logger.log('Run seeding...', SeederService.name);
+    }
     const adminUserId = new ObjectId('000000000000000000000000');
     const normalUserId = new ObjectId('000000000000000000000001');
+    const secondNormalUserId = new ObjectId('000000000000000000000002');
     const users = [
       {
         _id: adminUserId,
@@ -291,13 +294,21 @@ export class SeederService implements OnModuleInit {
         role: UserRole.ADMIN,
       },
       {
-        _id: new ObjectId('000000000000000000000001'),
+        _id: normalUserId,
         email: 'user@dryerjs.com',
         password: 'password',
         name: 'User@DryerJS',
         role: UserRole.USER,
       },
+      {
+        _id: secondNormalUserId,
+        email: 'secondUser@dryerjs.com',
+        password: 'password',
+        name: 'SecondUser@DryerJS',
+        role: UserRole.USER,
+      },
     ];
+
     const posts = [
       {
         _id: new ObjectId('000000000000000000000002'),
@@ -323,9 +334,21 @@ export class SeederService implements OnModuleInit {
         isPublic: false,
         userId: normalUserId,
       },
+      {
+        _id: new ObjectId('000000000000000000000006'),
+        content: 'Second user public note',
+        isPublic: true,
+        userId: secondNormalUserId,
+      },
+      {
+        _id: new ObjectId('000000000000000000000007'),
+        content: 'Second user private note',
+        isPublic: false,
+        userId: secondNormalUserId,
+      },
     ];
-    for (const user of users) await this.User.create(user);
-    for (const post of posts) await this.Post.create(post);
+    await this.User.create(users);
+    await this.Post.create(posts);
   }
 }
 

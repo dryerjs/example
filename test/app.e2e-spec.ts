@@ -3,6 +3,9 @@ import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import * as mongoose from 'mongoose';
 import { AppModule } from './../src/app.module';
+import { getModelToken } from '@nestjs/mongoose';
+
+jest.setTimeout(10000);
 
 export const isNil = (value: any): value is null | undefined =>
   value === null || value === undefined;
@@ -21,6 +24,18 @@ export const isString = (value: any): value is string =>
 
 class TestHelper {
   constructor(public app: INestApplication) {}
+
+  public async cleanDatabase() {
+    await Promise.all(
+      ['User', 'Post'].map(async (name) => {
+        const model = this.app.get(getModelToken(name), {
+          strict: false,
+        }) as mongoose.Model<any>;
+        await model.deleteMany({});
+        await model.ensureIndexes({});
+      }),
+    );
+  }
 
   public async makeSuccessRequest(input: {
     query: string;
@@ -60,6 +75,23 @@ class TestHelper {
     }
     return errors;
   }
+
+  public async getAccessToken(email: string) {
+    const { signIn } = await this.makeSuccessRequest({
+      query: `
+        mutation {
+          signIn(input: {
+            email: "${email}"
+            password: "password"
+          }) {
+            accessToken
+          }
+        }
+      `,
+    });
+
+    return `Bearer ${signIn.accessToken}`;
+  }
 }
 
 describe('App works', () => {
@@ -76,9 +108,7 @@ describe('App works', () => {
   });
 
   afterEach(async () => {
-    for (const connection of mongoose.connections) {
-      await connection.close();
-    }
+    await testHelper.cleanDatabase();
   });
 
   afterAll(async () => {
@@ -87,8 +117,12 @@ describe('App works', () => {
     }
   });
 
-  it('Test', async () => {
-    await testHelper.makeSuccessRequest({
+  const ADMIN_EMAIL = 'admin@dryerjs.com';
+  const USER_1_EMAIL = 'user@dryerjs.com';
+  const USER_2_EMAIL = 'secondUser@dryerjs.com';
+
+  it('Admin can get all posts', async () => {
+    const result = await testHelper.makeSuccessRequest({
       query: `
         query PaginatedPost {
           paginatePosts {
@@ -100,6 +134,101 @@ describe('App works', () => {
           }
         }
       `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(ADMIN_EMAIL),
+      },
     });
+
+    expect(
+      result.paginatePosts.docs.sort((a, b) => {
+        if (a.id === b.id) return 0;
+        if (a.id > b.id) return 1;
+        return -1;
+      }),
+    ).toEqual([
+      {
+        id: '000000000000000000000002',
+        isPublic: true,
+        content: 'Admin public announcement',
+      },
+      {
+        id: '000000000000000000000003',
+        isPublic: false,
+        content: 'Admin private note',
+      },
+      {
+        id: '000000000000000000000004',
+        isPublic: true,
+        content: 'User public note',
+      },
+      {
+        id: '000000000000000000000005',
+        isPublic: false,
+        content: 'User private note',
+      },
+      {
+        id: '000000000000000000000006',
+        isPublic: true,
+        content: 'Second user public note',
+      },
+      {
+        id: '000000000000000000000007',
+        isPublic: false,
+        content: 'Second user private note',
+      },
+    ]);
+  });
+
+  it('User can get only public post and his own posts', async () => {
+    const result = await testHelper.makeSuccessRequest({
+      query: `
+        query PaginatedPost {
+          paginatePosts {
+            docs {
+              id
+              isPublic
+              content
+              userId
+            }
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_1_EMAIL),
+      },
+    });
+
+    expect(
+      result.paginatePosts.docs.sort((a, b) => {
+        if (a.id === b.id) return 0;
+        if (a.id > b.id) return 1;
+        return -1;
+      }),
+    ).toEqual([
+      {
+        id: '000000000000000000000002',
+        isPublic: true,
+        content: 'Admin public announcement',
+        userId: '000000000000000000000000',
+      },
+      {
+        id: '000000000000000000000004',
+        isPublic: true,
+        content: 'User public note',
+        userId: '000000000000000000000001',
+      },
+      {
+        id: '000000000000000000000005',
+        isPublic: false,
+        content: 'User private note',
+        userId: '000000000000000000000001',
+      },
+      {
+        id: '000000000000000000000006',
+        isPublic: true,
+        content: 'Second user public note',
+        userId: '000000000000000000000002',
+      },
+    ]);
   });
 });
