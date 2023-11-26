@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import * as mongoose from 'mongoose';
-import { AppModule } from './../src/app.module';
+import { AppModule, SeederService } from './../src/app.module';
 import { getModelToken } from '@nestjs/mongoose';
 
 export const isNil = (value: any): value is null | undefined =>
@@ -95,7 +95,7 @@ class TestHelper {
 describe('App works', () => {
   let testHelper: TestHelper;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -103,6 +103,10 @@ describe('App works', () => {
     const app = moduleFixture.createNestApplication();
     await app.init();
     testHelper = new TestHelper(app);
+  });
+
+  beforeEach(async () => {
+    await testHelper.app.get(SeederService).onModuleInit();
   });
 
   afterEach(async () => {
