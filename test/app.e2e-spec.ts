@@ -611,4 +611,53 @@ describe('App works', () => {
 
     expect(result.updateUser.role).toEqual('ADMIN');
   });
+
+  it('Sign in with invalid email', async () => {
+    await testHelper.makeFailRequest({
+      query: `
+        mutation {
+          signIn(input: {
+            email: ""
+            password: "password"
+          }) {
+            accessToken
+          }
+        }
+      `,
+      errorMessageMustContains: 'Invalid email or password',
+    });
+  });
+
+  it('Sign in with invalid password', async () => {
+    await testHelper.makeFailRequest({
+      query: `
+        mutation {
+          signIn(input: {
+            email: "${ADMIN_EMAIL}"
+            password: "wrong_password"
+          }) {
+            accessToken
+          }
+        }
+      `,
+      errorMessageMustContains: 'Invalid email or password',
+    });
+  });
+
+  it('whoAmI works', async () => {
+    const result = await testHelper.makeSuccessRequest({
+      query: `
+        query {
+          whoAmI {
+            id
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(ADMIN_EMAIL),
+      },
+    });
+
+    expect(result.whoAmI.id).toEqual('000000000000000000000000');
+  });
 });

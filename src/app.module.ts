@@ -167,12 +167,6 @@ class UserHook implements Hook<User, Context> {
     ) {
       throw new UnauthorizedException('Cannot update other user');
     }
-    if (
-      ctx.role === UserRole.USER &&
-      input.id.toString() !== ctx.id.toString()
-    ) {
-      throw new UnauthorizedException('YOU_WERE_CAUGHT');
-    }
   }
 }
 
