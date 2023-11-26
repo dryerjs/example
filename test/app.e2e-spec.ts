@@ -145,32 +145,32 @@ describe('App works', () => {
       }),
     ).toEqual([
       {
-        id: '000000000000000000000002',
+        id: '000000000000000000000003',
         isPublic: true,
         content: 'Admin public announcement',
       },
       {
-        id: '000000000000000000000003',
+        id: '000000000000000000000004',
         isPublic: false,
         content: 'Admin private note',
       },
       {
-        id: '000000000000000000000004',
+        id: '000000000000000000000005',
         isPublic: true,
         content: 'User public note',
       },
       {
-        id: '000000000000000000000005',
+        id: '000000000000000000000006',
         isPublic: false,
         content: 'User private note',
       },
       {
-        id: '000000000000000000000006',
+        id: '000000000000000000000007',
         isPublic: true,
         content: 'Second user public note',
       },
       {
-        id: '000000000000000000000007',
+        id: '000000000000000000000008',
         isPublic: false,
         content: 'Second user private note',
       },
@@ -204,25 +204,25 @@ describe('App works', () => {
       }),
     ).toEqual([
       {
-        id: '000000000000000000000002',
+        id: '000000000000000000000003',
         isPublic: true,
         content: 'Admin public announcement',
         userId: '000000000000000000000000',
       },
       {
-        id: '000000000000000000000004',
+        id: '000000000000000000000005',
         isPublic: true,
         content: 'User public note',
         userId: '000000000000000000000001',
       },
       {
-        id: '000000000000000000000005',
+        id: '000000000000000000000006',
         isPublic: false,
         content: 'User private note',
         userId: '000000000000000000000001',
       },
       {
-        id: '000000000000000000000006',
+        id: '000000000000000000000007',
         isPublic: true,
         content: 'Second user public note',
         userId: '000000000000000000000002',
@@ -234,7 +234,7 @@ describe('App works', () => {
     const result = await testHelper.makeSuccessRequest({
       query: `
         query {
-          post(id: "000000000000000000000005") {
+          post(id: "000000000000000000000006") {
             id
             isPublic
             content
@@ -247,10 +247,30 @@ describe('App works', () => {
       },
     });
 
-    expect(result.post.id).toEqual('000000000000000000000005');
+    expect(result.post.id).toEqual('000000000000000000000006');
   });
 
   it('User can get one private post his own', async () => {
+    const result = await testHelper.makeSuccessRequest({
+      query: `
+        query {
+          post(id: "000000000000000000000008") {
+            id
+            isPublic
+            content
+            userId
+          }
+        }
+      `,
+      headers: {
+        Authorization: await testHelper.getAccessToken(USER_2_EMAIL),
+      },
+    });
+
+    expect(result.post.id).toEqual('000000000000000000000008');
+  });
+
+  it('User can get one public post his own', async () => {
     const result = await testHelper.makeSuccessRequest({
       query: `
         query {
@@ -270,31 +290,11 @@ describe('App works', () => {
     expect(result.post.id).toEqual('000000000000000000000007');
   });
 
-  it('User can get one public post his own', async () => {
-    const result = await testHelper.makeSuccessRequest({
-      query: `
-        query {
-          post(id: "000000000000000000000006") {
-            id
-            isPublic
-            content
-            userId
-          }
-        }
-      `,
-      headers: {
-        Authorization: await testHelper.getAccessToken(USER_2_EMAIL),
-      },
-    });
-
-    expect(result.post.id).toEqual('000000000000000000000006');
-  });
-
   it('User can get one public post of other', async () => {
     const result = await testHelper.makeSuccessRequest({
       query: `
         query {
-          post(id: "000000000000000000000004") {
+          post(id: "000000000000000000000005") {
             id
             isPublic
             content
@@ -307,14 +307,14 @@ describe('App works', () => {
       },
     });
 
-    expect(result.post.id).toEqual('000000000000000000000004');
+    expect(result.post.id).toEqual('000000000000000000000005');
   });
 
   it('User cannot get private post of other', async () => {
     await testHelper.makeFailRequest({
       query: `
         query {
-          post(id: "000000000000000000000005") {
+          post(id: "000000000000000000000006") {
             id
             isPublic
             content
@@ -352,17 +352,17 @@ describe('App works', () => {
       }),
     ).toEqual([
       {
-        id: '000000000000000000000002',
+        id: '000000000000000000000003',
         isPublic: true,
         content: 'Admin public announcement',
       },
       {
-        id: '000000000000000000000004',
+        id: '000000000000000000000005',
         isPublic: true,
         content: 'User public note',
       },
       {
-        id: '000000000000000000000006',
+        id: '000000000000000000000007',
         isPublic: true,
         content: 'Second user public note',
       },
@@ -373,7 +373,7 @@ describe('App works', () => {
     const result = await testHelper.makeSuccessRequest({
       query: `
         query {
-          post(id: "000000000000000000000002") {
+          post(id: "000000000000000000000003") {
             id
             isPublic
             content
@@ -383,14 +383,14 @@ describe('App works', () => {
       `,
     });
 
-    expect(result.post.id).toEqual('000000000000000000000002');
+    expect(result.post.id).toEqual('000000000000000000000003');
   });
 
   it('Guess cannot get private post', async () => {
     await testHelper.makeFailRequest({
       query: `
         query {
-          post(id: "000000000000000000000005") {
+          post(id: "000000000000000000000006") {
             id
             isPublic
             content
@@ -407,7 +407,7 @@ describe('App works', () => {
       query: `
         mutation {
           updatePost(input: {
-            id: "000000000000000000000005"
+            id: "000000000000000000000006"
             content: "Updated content"
           }) {
             id
@@ -430,7 +430,7 @@ describe('App works', () => {
       query: `
         mutation {
           updatePost(input: {
-            id: "000000000000000000000005"
+            id: "000000000000000000000006"
             content: "Updated content"
           }) {
             id
@@ -452,7 +452,7 @@ describe('App works', () => {
       query: `
         mutation {
           updatePost(input: {
-            id: "000000000000000000000005"
+            id: "000000000000000000000006"
             content: "Updated content"
           }) {
             id
@@ -474,7 +474,7 @@ describe('App works', () => {
     await testHelper.makeSuccessRequest({
       query: `
         mutation {
-          removePost(id: "000000000000000000000005") {
+          removePost(id: "000000000000000000000006") {
             success
           }
         }
@@ -489,7 +489,7 @@ describe('App works', () => {
     await testHelper.makeFailRequest({
       query: `
         mutation {
-          removePost(id: "000000000000000000000005") {
+          removePost(id: "000000000000000000000006") {
             success
           }
         }
@@ -505,7 +505,7 @@ describe('App works', () => {
     await testHelper.makeSuccessRequest({
       query: `
         mutation {
-          removePost(id: "000000000000000000000005") {
+          removePost(id: "000000000000000000000006") {
             success
           }
         }

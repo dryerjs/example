@@ -311,37 +311,37 @@ export class SeederService implements OnModuleInit {
 
     const posts = [
       {
-        _id: new ObjectId('000000000000000000000002'),
+        _id: new ObjectId('000000000000000000000003'),
         content: 'Admin public announcement',
         isPublic: true,
         userId: adminUserId,
       },
       {
-        _id: new ObjectId('000000000000000000000003'),
+        _id: new ObjectId('000000000000000000000004'),
         content: 'Admin private note',
         isPublic: false,
         userId: adminUserId,
       },
       {
-        _id: new ObjectId('000000000000000000000004'),
+        _id: new ObjectId('000000000000000000000005'),
         content: 'User public note',
         isPublic: true,
         userId: normalUserId,
       },
       {
-        _id: new ObjectId('000000000000000000000005'),
+        _id: new ObjectId('000000000000000000000006'),
         content: 'User private note',
         isPublic: false,
         userId: normalUserId,
       },
       {
-        _id: new ObjectId('000000000000000000000006'),
+        _id: new ObjectId('000000000000000000000007'),
         content: 'Second user public note',
         isPublic: true,
         userId: secondNormalUserId,
       },
       {
-        _id: new ObjectId('000000000000000000000007'),
+        _id: new ObjectId('000000000000000000000008'),
         content: 'Second user private note',
         isPublic: false,
         userId: secondNormalUserId,
