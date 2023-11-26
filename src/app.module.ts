@@ -152,13 +152,6 @@ export class Post {
 
 type Context = null | Pick<User, 'email' | 'id' | 'name' | 'role'>;
 
-const SYSTEM: Context = {
-  id: new ObjectId('999999999999999999999999'),
-  role: UserRole.ADMIN,
-  email: 'system@dryerjs.com',
-  name: 'system',
-};
-
 @Hook(() => User)
 class UserHook implements Hook<User, Context> {
   async beforeUpdate({
@@ -173,6 +166,12 @@ class UserHook implements Hook<User, Context> {
       input.id.toString() !== ctx.id.toString()
     ) {
       throw new UnauthorizedException('Cannot update other user');
+    }
+    if (
+      ctx.role === UserRole.USER &&
+      input.id.toString() !== ctx.id.toString()
+    ) {
+      throw new UnauthorizedException('YOU_WERE_CAUGHT');
     }
   }
 }
@@ -234,6 +233,7 @@ class SignInInput extends PickType(CreateInputType(User), [
 export class AuthResolver {
   constructor(
     @InjectBaseService(User) public userService: BaseService<User, Context>,
+    @InjectModel('User') public User: PaginateModel<User>,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -244,12 +244,11 @@ export class AuthResolver {
     })
     input: Pick<User, 'email' | 'password'>,
   ) {
-    const user = await this.userService.findOne(SYSTEM, {
-      email: input.email,
-    });
-    if (user.password !== input.password) {
+    const user = await this.User.findOne({ email: input.email });
+    if (user?.password !== input.password) {
       throw new UnauthorizedException('Invalid email or password');
     }
+
     const accessToken = await this.jwtService.signAsync({
       id: user.id.toString(),
       role: user.role,
