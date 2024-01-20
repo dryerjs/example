@@ -25,7 +25,7 @@ import {
   InputType,
 } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
-import { InjectModel, MongooseModule } from '@nestjs/mongoose';
+import { MongooseModule } from '@nestjs/mongoose';
 import {
   BelongsTo,
   CreateInputType,
@@ -39,12 +39,13 @@ import {
   Skip,
   BaseService,
   InjectBaseService,
-  Hook,
+  BeforeUpdateHook,
+  BeforeReadFilterHook,
+  BeforeWriteFilterHook,
   BeforeUpdateHookInput,
   BeforeWriteFilterHookInput,
   BeforeReadFilterHookInput,
 } from 'dryerjs';
-import { PaginateModel } from 'mongoose';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin/landingPage/default';
 
@@ -103,13 +104,7 @@ const AdminOnly = () => {
 
 const PublicAccessWithRole = () => applyDecorators(UseGuards(RoleGuard));
 
-@Definition({
-  allowedApis: ['findOne', 'paginate', 'remove', 'update'],
-  resolverDecorators: {
-    update: [UserOnly()],
-    remove: [AdminOnly()],
-  },
-})
+@Definition()
 export class User {
   @Id()
   id: ObjectId;
@@ -127,12 +122,7 @@ export class User {
   password: string;
 }
 
-@Definition({
-  resolverDecorators: {
-    write: [UserOnly()],
-    read: [PublicAccessWithRole()],
-  },
-})
+@Definition()
 export class Post {
   @Id()
   id: ObjectId;
@@ -152,8 +142,9 @@ export class Post {
 
 type Context = null | Pick<User, 'email' | 'id' | 'name' | 'role'>;
 
-@Hook(() => User)
-class UserHook implements Hook<User, Context> {
+@Injectable()
+class UserHook {
+  @BeforeUpdateHook(() => User)
   async beforeUpdate({
     ctx,
     input,
@@ -170,9 +161,10 @@ class UserHook implements Hook<User, Context> {
   }
 }
 
-@Hook(() => Post)
-class PostHook implements Hook<Post, Context> {
-  async beforeWriteFilter({
+@Injectable()
+class PostHook {
+  @BeforeWriteFilterHook(() => Post)
+  async ensureNormalUserCanOnlyWriteToHimself({
     ctx,
     filter,
   }: BeforeWriteFilterHookInput<Post, Context>): Promise<void> {
@@ -182,7 +174,8 @@ class PostHook implements Hook<Post, Context> {
     // guest cannot write post so we don't need to handle it
   }
 
-  async beforeReadFilter({
+  @BeforeReadFilterHook(() => Post)
+  async ensureGuestOrNormalUserCannotReadPrivatePostsOfOthers({
     ctx,
     filter,
   }: BeforeReadFilterHookInput<Post, Context>): Promise<void> {
@@ -227,7 +220,6 @@ class SignInInput extends PickType(CreateInputType(User), [
 export class AuthResolver {
   constructor(
     @InjectBaseService(User) public userService: BaseService<User, Context>,
-    @InjectModel('User') public User: PaginateModel<User>,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -238,7 +230,7 @@ export class AuthResolver {
     })
     input: Pick<User, 'email' | 'password'>,
   ) {
-    const user = await this.User.findOne({ email: input.email });
+    const user = await this.userService.model.findOne({ email: input.email });
     if (user?.password !== input.password) {
       throw new UnauthorizedException('Invalid email or password');
     }
@@ -266,12 +258,12 @@ export class AuthResolver {
 @Injectable()
 export class SeederService implements OnModuleInit {
   constructor(
-    @InjectModel('User') readonly User: PaginateModel<User>,
-    @InjectModel('Post') readonly Post: PaginateModel<User>,
+    @InjectBaseService(User) public userService: BaseService<User, Context>,
+    @InjectBaseService(Post) public postService: BaseService<Post, Context>,
   ) {}
 
   async onModuleInit() {
-    if ((await this.User.countDocuments({})) !== 0) return;
+    if ((await this.userService.model.countDocuments({})) !== 0) return;
     if (process.env.NODE_ENV !== 'test') {
       Logger.log('Run seeding...', SeederService.name);
     }
@@ -340,8 +332,8 @@ export class SeederService implements OnModuleInit {
         userId: secondNormalUserId,
       },
     ];
-    await this.User.create(users);
-    await this.Post.create(posts);
+    await this.userService.model.create(users);
+    await this.postService.model.create(posts);
   }
 }
 
@@ -357,9 +349,25 @@ export class SeederService implements OnModuleInit {
       process.env.MONGO_URL || 'mongodb://127.0.0.1:27017/dryerjs-example',
     ),
     DryerModule.register({
-      definitions: [User, Post],
       contextDecorator: Ctx,
-      hooks: [UserHook, PostHook],
+      providers: [UserHook, PostHook],
+      definitions: [
+        {
+          definition: User,
+          allowedApis: ['findOne', 'paginate', 'remove', 'update'],
+          decorators: {
+            update: [UserOnly()],
+            remove: [AdminOnly()],
+          },
+        },
+        {
+          definition: Post,
+          decorators: {
+            write: [UserOnly()],
+            read: [PublicAccessWithRole()],
+          },
+        },
+      ],
     }),
     JwtModule.register({
       global: true,

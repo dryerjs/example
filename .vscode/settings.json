@@ -1,5 +1,6 @@
 {
     "cSpell.words": [
         "QLISO"
-    ]
+    ],
+    "typescript.tsdk": "node_modules/typescript/lib"
 }
