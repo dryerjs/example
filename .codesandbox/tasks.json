@@ -7,7 +7,7 @@
     },
     {
       "command": "docker-compose up -d",
-      "name": "d"
+      "name": "docker-compose"
     }
   ],
 
