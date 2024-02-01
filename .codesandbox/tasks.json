@@ -8,6 +8,10 @@
     {
       "command": "docker-compose up -d",
       "name": "docker-compose"
+    },
+    {
+      "command": "npm run start:dev",
+      "name": "start:dev"
     }
   ],
 
